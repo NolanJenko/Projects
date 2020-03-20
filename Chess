@@ -1,4 +1,5 @@
 import pygame
+import math
 
 
 class Space:
@@ -14,9 +15,11 @@ class Space:
         return self.piece
 
 
+
 class Board:
     def __init__(self):
         self.board = [[] for x in range(8)]
+        self.turn = 0
 
     def create_board(self):
         for i in range(8):
@@ -32,27 +35,54 @@ class Board:
                         self.board[j] += [Space('white')]
                     else:
                         self.board[j] += [Space('black')]
+
         for i in range(8):
             self.board[1][i].add_piece(Pawn(True))
             self.board[6][i].add_piece(Pawn(False))
             if i == 0 or i == 7:
                 self.board[0][i].add_piece(Rook(True))
                 self.board[7][i].add_piece(Rook(False))
-            if i == 1 or i == 6:
+            elif i == 1 or i == 6:
                 self.board[0][i].add_piece(Knight(True))
                 self.board[7][i].add_piece(Knight(False))
-            if i == 2 or i == 5:
+            elif i == 2 or i == 5:
                 self.board[0][i].add_piece(Bishop(True))
                 self.board[7][i].add_piece(Bishop(False))
-            if i == 3:
+            elif i == 3:
                 self.board[0][i].add_piece(Queen(True))
                 self.board[7][i].add_piece(Queen(False))
-            if i == 4:
+            elif i == 4:
                 self.board[0][i].add_piece(King(True))
                 self.board[7][i].add_piece(King(False))
 
     def return_board(self):
         return self.board
+
+    def row_column(self, pos):
+        row  = math.floor(pos[0]/75)
+        column = math.floor(pos[1]/75)
+        return [row, column]
+
+    def piece_by(self,x, y):
+        return self.board[x][y].get_piece()
+
+    def change(self, pos1, pos2):
+        self.board[pos2[1]][pos2[0]].add_piece(self.board[pos1[1]][pos1[0]].get_piece())
+
+        (self.board[pos1[1]][pos1[0]]).add_piece(None)
+
+    def is_turn(self, pos):
+        selected_space = self.board[pos[1]][pos[0]].get_piece()
+        if selected_space is None:
+            return False
+        elif self.turn % 2 == 0 and selected_space.color is False:
+            self.turn += 1
+            return True
+        elif self.turn % 2 == 1 and selected_space.color is True:
+            self.turn += 1
+            return True
+        else:
+            return False
 
 
 class Piece:
@@ -64,92 +94,311 @@ class Piece:
 
 
 class King(Piece):
+    def __init__(self, color):
+        Piece.__init__(self, color)
+        self.color = color
+        if color is False:
+            w_king = pygame.image.load('white_king.png')
+            self.w_king = pygame.transform.scale(w_king, (75, 75))
+        else:
+            w_king = pygame.image.load('black_king.png')
+            self.w_king = pygame.transform.scale(w_king, (75, 75))
+
     def image(self):
-        w_king = pygame.image.load('white_king.png')
-        return pygame.transform.scale(w_king, (75,75))
-    def move(self):
-        return 1
+        return self.w_king
+
+    def is_valid(self, board, pos, new):
+        s = board.piece_by(new[1], new[0])
+        n = board.piece_by(pos[1], pos[0])
+        if s is None or s.color != n.color:
+            return True
+        return False
+
+    def move(self, board, pos, new):
+        distance = math.sqrt((pos[1]-new[1])**2 + (pos[0]- new[0])**2)
+        if self.is_valid(board, pos, new):
+            if distance <= math.sqrt(2):
+                board.change(pos, new)
 
 
 class Queen(Piece):
+    def __init__(self, color):
+        Piece.__init__(self, color)
+        self.color = color
+        if color is False:
+            w_queen = pygame.image.load('white_queen.png')
+            self.queen = pygame.transform.scale(w_queen, (75, 75))
+        else:
+            b_queen = pygame.image.load('black_queen.png')
+            self.queen = pygame.transform.scale(b_queen, (75, 75))
+
     def image(self):
-        w_queen = pygame.image.load('white_queen.png')
-        return pygame.transform.scale(w_queen, (75,75))
-    def move(self):
-        return 1
+        return self.queen
+
+    def is_valid(self, board, pos, new):
+        y = new[1] - pos[1]
+        x = new[0] - pos[0]
+        if board.piece_by(new[1], new[0]) is not None:
+            if board.piece_by(new[1], new[0]).color == board.piece_by(pos[1], pos[0]).color:
+                return False
+
+        if y == 0 and x > 0:
+            for i in range(pos[0] + 1, new[0]):
+                if board.piece_by(pos[1], i) is not None:
+                    return False
+        elif y == 0 and x < 0:
+            for i in range(pos[0] - 1, new[0], -1):
+                if board.piece_by(pos[1], i) is not None:
+                    return False
+        elif x == 0 and y > 0:
+            for i in range(pos[1] + 1, new[1]):
+                if board.piece_by(i, pos[0]) is not None:
+                    return False
+        elif x == 0 and y < 0:
+            for i in range(pos[1] - 1, new[1], -1):
+                if board.piece_by(i, pos[0]) is not None:
+                    return False
+        x = new[0] - pos[0]
+        slope = (pos[0] - new[0]) / (pos[1] - new[1])
+        if board.piece_by(new[1], new[0]) is not None:
+            if board.piece_by(new[1], new[0]).color == board.piece_by(pos[1], pos[0]).color:
+                return False
+        if slope == 1 and x > 0:
+            for i in range(1, x):
+                if board.piece_by(pos[1] + i, pos[0] + i) is not None:
+                    return False
+        elif slope == 1 and x < 0:
+            for i in range(1, abs(x)):
+                if board.piece_by(pos[1] - i, pos[0] - i) is not None:
+                    return False
+        elif slope == -1 and x > 0:
+            for i in range(1, x):
+                if board.piece_by(pos[1] - i, pos[0] + i) is not None:
+                    return False
+        elif slope == -1 and x < 0:
+            for i in range(1, abs(x)):
+                if board.piece_by(pos[1] + i, pos[0] - i) is not None:
+                    return False
+        return True
+
+    def move(self, board, pos, new):
+        if self.is_valid(board, pos, new):
+            if pos[0] == new[0] or pos[1] == new[1]:
+                board.change(pos, new)
+                return 0
+            slope = (pos[0] - new[0])/(pos[1]- new[1])
+            if slope == 1 or slope == -1:
+                board.change(pos, new)
+
 
 
 class Rook(Piece):
+    def __init__(self, color):
+        super().__init__(color)
+        self.color = color
+        if self.color is False:
+            w_rook = pygame.image.load('white_rook.png')
+            self.rook = pygame.transform.scale(w_rook, (75, 75))
+        else:
+            w_rook = pygame.image.load('black_rook.png')
+            self.rook = pygame.transform.scale(w_rook, (75, 75))
+
     def image(self):
-        w_rook = pygame.image.load('white_rook.png')
-        return pygame.transform.scale(w_rook, (75,75))
-    def move(self):
-        return 1
+        return self.rook
+
+    def is_valid(self, board, pos, new):
+        y = new[1]-pos[1]
+        x = new[0]-pos[0]
+        if board.piece_by(new[1], new[0]) is not None:
+            if board.piece_by(new[1], new[0]).color == board.piece_by(pos[1], pos[0]).color:
+                return False
+
+        if y == 0 and x>0:
+            for i in range(pos[0]+1, new[0]):
+                if board.piece_by(pos[1], i) is not None:
+                    return False
+        elif y == 0 and x<0:
+            for i in range(pos[0]-1, new[0], -1):
+                if board.piece_by(pos[1], i) is not None:
+                    return False
+        elif x == 0 and y>0:
+            for i in range(pos[1]+1, new[1]):
+                if board.piece_by(i, pos[0]) is not None:
+                    return False
+        elif x == 0 and y < 0:
+            for i in range(pos[1]-1, new[1],-1):
+                if board.piece_by(i, pos[0]) is not None:
+                    return False
+
+        return True
+
+    def move(self, board, pos, new):
+        if self.is_valid(board, pos, new):
+            if pos[1] == new[1] or pos[0] == new[0]:
+                board.change(pos, new)
 
 
 class Bishop(Piece):
-    def image(self):
-        w_bishop = pygame.image.load('white_bishop.png')
-        return pygame.transform.scale(w_bishop, (75,75))
+    def __init__(self, color):
+        Piece.__init__(self, color)
+        self.color = color
+        if color is False:
+            w_bishop = pygame.image.load('white_bishop.png')
+            self.w_bishop = pygame.transform.scale(w_bishop, (75, 75))
+        else:
+            w_bishop = pygame.image.load('black_bishop.png')
+            self.w_bishop = pygame.transform.scale(w_bishop, (75, 75))
 
-    def move(self):
-        return 1
+    def image(self):
+        return self.w_bishop
+
+    def is_valid(self, board, pos, new, slope):
+        x = new[0]- pos[0]
+        if board.piece_by(new[1], new[0]) is not None:
+            if board.piece_by(new[1], new[0]).color == board.piece_by(pos[1], pos[0]).color:
+                return False
+        if slope == 1 and x>0:
+            for i in range(1,x):
+                if board.piece_by(pos[1]+i,pos[0]+i) is not None:
+                    return False
+        elif slope == 1 and x<0:
+            for i in range(1, abs(x)):
+                if board.piece_by(pos[1]-i,pos[0]-i) is not None:
+                    return False
+        elif slope == -1 and x>0:
+            for i in range(1, x):
+                if board.piece_by(pos[1] - i, pos[0] + i) is not None:
+                    return False
+        elif slope == -1 and x<0:
+            for i in range(1,abs(x)):
+                if board.piece_by(pos[1]+i,pos[0]-i) is not None:
+                    return False
+        return True
+
+    def move(self, board, pos, new):
+        slope = (pos[0] - new[0])/(pos[1]- new[1])
+        if slope == -1 or slope == 1:
+            if self.is_valid(board, pos, new, slope):
+
+                board.change(pos, new)
 
 
 class Knight(Piece):
-    def image(self):
-        w_knight = pygame.image.load('white_knight.png')
-        return pygame.transform.scale(w_knight, (75,75))
+    def __init__(self, color):
+        Piece.__init__(self, color)
+        self.color = color
+        if color is False:
+            w_knight = pygame.image.load('white_knight.png')
+            self.w_knight = pygame.transform.scale(w_knight, (75, 75))
+        else:
+            w_knight = pygame.image.load('black_knight.png')
+            self.w_knight = pygame.transform.scale(w_knight, (75, 75))
 
-    def move(self):
-        return 1
+    def image(self):
+        return self.w_knight
+
+
+    def is_valid(self, board, pos, new):
+        s = board.piece_by(new[1], new[0])
+        n = board.piece_by(pos[1], pos[0])
+        if s is None or n.color != s.color:
+            return True
+        return False
+
+    def move(self, board, pos, new):
+        distance = math.sqrt((pos[1]-new[1])**2 + (pos[0]- new[0])**2)
+        if self.is_valid(board, pos, new):
+            if distance == math.sqrt(5):
+                board.change(pos, new)
 
 
 class Pawn(Piece):
-    def image(self):
-        w_pawn = pygame.image.load('white_pawn.png')
-        return pygame.transform.scale(w_pawn, (75, 75))
+    def __init__(self, color):
+        Piece.__init__(self, color)
+        self.color = color
+        self.num = 0
+        if color is False:
+            w_pawn = pygame.image.load('white_pawn.png')
+            self.w_pawn = pygame.transform.scale(w_pawn, (75, 75))
+        else:
+            w_pawn = pygame.image.load('black_pawn.png')
+            self.w_pawn = pygame.transform.scale(w_pawn, (75, 75))
 
-    def move(self):
-        return 1
+    def image(self):
+        return self.w_pawn
+
+    def is_valid(self, board, pos, new):
+        s = board.piece_by(new[1], new[0])
+        n = board.piece_by(pos[1], pos[0])
+        if s is None or s.color != n.color:
+            return True
+        return False
+
+    def move(self,board, pos, new):
+        if self.is_valid(board,pos,new):
+            if self.color is False:
+                if pos[1]-1 == new[1] and pos[0] == new[0]:
+                    board.change(pos, new)
+                if self.num is 0:
+                    if pos[1] - 2 == new[1] and pos[0] == new[0]:
+                        self.num += 1
+                        board.change(pos, new)
+                        self.num += 1
+            else:
+                if pos[1]+1 == new[1] and pos[0] == new[0]:
+                    board.change(pos, new)
+                if self.num is 0:
+                    if pos[1] + 2 == new[1] and pos[0] == new[0]:
+                        self.num += 1
+                        board.change(pos, new)
 
 
 class Main:
     def __init__(self):
-        self.board = Board()
-        self.board.create_board()
-        self.b = self.board.return_board()
+        self.Board = Board()
+        self.Board.create_board()
+        self.board = self.Board.return_board()
         self.screen = pygame.display.set_mode((600, 600))
         self.loop()
 
     def draw(self):
         for i in range(8):
             for j in range(8):
-                if self.b[i][j].color == 'white':
-                    pygame.draw.rect(self.screen, (51, 102, 0), (j * 75, i*75, 75, 75))
-                    if self.b[i][j].piece is not None:
-                        self.screen.blit(self.b[i][j].piece.image(), (j *75, i*75))
+                if self.board[i][j].color == 'white':
+                    pygame.draw.rect(self.screen, (255, 255, 255), (j * 75, i * 75, 75, 75))
+                    if self.board[i][j].piece is not None:
+                        self.screen.blit(self.Board.piece_by(i, j).image(), (j * 75, i * 75))
                 else:
-                    pygame.draw.rect(self.screen, (255, 255, 255), (j * 75, i*75, 75, 75))
-                    if self.b[i][j].piece is not None:
-                        self.screen.blit(self.b[i][j].piece.image(), (j *75, i*75))
+                    pygame.draw.rect(self.screen, (52, 152, 0), (j * 75, i*75, 75, 75))
+                    if self.Board.piece_by(i,j) is not None:
+                        self.screen.blit(self.Board.piece_by(i,j).image(), (j *75, i*75))
 
 
     def loop(self):
         pygame.init()
+
         turn  = 0
         WHITE=(255,255,255)
-        selected = None
+        pos = []
 
         self.screen.fill(WHITE)
         running = True
         while running:
             for event in pygame.event.get():
-                if event.type== pygame.QUIT:
+                if event.type == pygame.QUIT:
                     running = False
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    po = pygame.mouse.get_pos()
+                    po = self.Board.row_column(po)
+                    pos += [po]
+                    if len(pos) == 2:
+                        selected = self.Board.piece_by(pos[0][1], pos[0][0])
+                        if selected is not None and self.Board.is_turn(pos[0]):
+                            selected.move(self.Board, pos[0], pos[1])
+                            pos = []
+                        else:
+                            pos = []
             self.draw()
             pygame.display.update()
 
 Main()
-
-            

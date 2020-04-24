@@ -1,194 +1,170 @@
 import pygame
 import math
+import numpy as np
+import random
 
 
-screen = pygame.display.set_mode((600, 600))
-
-class Space:
-    def __init__(self, color):
-
-        self.color = color
-        self.piece = None
-
-
-    def add_piece(self, piece):
-        self.piece = piece
-
-    def get_piece(self):
-        return self.piece
-
+pygame.init()
+screen = pygame.display.set_mode((800, 800))
 
 
 class Board:
     def __init__(self):
-        self.board = [[] for x in range(8)]
-        self.turn = 2
-        self.possible = []
-        self.black_k = [4, 0]
-        self.white_k = [4, 7]
+        self.board = np.full((8,8), None)
+        self.white = []
+        self.black = []
+        self.recent_move = {}
 
-    def create_board(self):
-        for i in range(8):
-            for j in range(8):
-                if (i % 2) == 0:
-                    if(j % 2) == 0:
-                        self.board[j] += [Space('white')]
-                    else:
-                        self.board[j] += [Space('black')]
-
-                else:
-                    if (j % 2) != 0:
-                        self.board[j] += [Space('white')]
-                    else:
-                        self.board[j] += [Space('black')]
-
-        for i in range(8):
-            self.board[1][i].add_piece(Pawn(True))
-            self.board[6][i].add_piece(Pawn(False))
-            if i == 0 or i == 7:
-                self.board[0][i].add_piece(Rook(True))
-                self.board[7][i].add_piece(Rook(False))
-            elif i == 1 or i == 6:
-                self.board[0][i].add_piece(Knight(True))
-                self.board[7][i].add_piece(Knight(False))
-            elif i == 2 or i == 5:
-                self.board[0][i].add_piece(Bishop(True))
-                self.board[7][i].add_piece(Bishop(False))
-            elif i == 3:
-                self.board[0][i].add_piece(Queen(True))
-                self.board[7][i].add_piece(Queen(False))
-            elif i == 4:
-                self.board[0][i].add_piece(King(True))
-                self.board[7][i].add_piece(King(False))
-
-    def return_board(self):
-        return self.board
-
-    def row_column(self, pos):
-        row  = math.floor(pos[0]/75)
-        column = math.floor(pos[1]/75)
-        return [row, column]
-
-    def piece_by(self,x, y):
-        return self.board[x][y].get_piece()
-
-    def king_pos(self, selection, new):
-        if selection.color is False:
-            self.white_k = new
+    def add_piece(self, piece, pos):
+        self.board[pos[1]][pos[0]] = piece
+        piece.change_pos(pos)
+        if piece.color:
+            self.white += [piece]
         else:
-            self.black_k = new
+            self.black += [piece]
 
-    def change(self, pos1, pos2):
+    def piece_by_pos(self, pos):
+        return self.board[pos[1]][pos[0]]
 
-        self.board[pos2[1]][pos2[0]].add_piece(self.board[pos1[1]][pos1[0]].get_piece())
+    def create(self, color):
+        side = 0
+        if color:
+            side = 7
+        self.add_piece(King(color), [4, side])
+        for i in range(8):
+            if not color:
+                self.add_piece(Pawn(color), [i, side+1])
+            else:
+                self.add_piece(Pawn(color), [i, side - 1])
+            if i == 0 or i == 7:
+                self.add_piece(Rook(color), [i, side])
+            if i == 1 or i == 6:
+                self.add_piece(Knight(color), [i, side])
+            if i == 2 or i == 5:
+                self.add_piece(Bishop(color), [i, side])
 
-        (self.board[pos1[1]][pos1[0]]).add_piece(None)
-        self.turn += 1
+        self.add_piece(Queen(color), [3, side])
+
+    def change(self, old, new):
+        self.recent_move = {}
+        new_pos = self.board[new[1]][new[0]]
+        old_pos = self.board[old[1]][old[0]]
+        if new_pos is not None:
+            if new_pos.color is True:
+                self.white.remove(new_pos)
+            else:
+                self.black.remove(new_pos)
+        self.previous_move(new_pos, new, old_pos, old)
+        self.board[new[1]][new[0]] = self.board[old[1]][old[0]]
+        self.board[new[1]][new[0]].change_pos(new)
+        self.board[old[1]][old[0]] = None
+
+    def previous_move(self, new, new_pos, old, old_pos):
+        if new is not None:
+            self.recent_move[new] = new.position
+        else:
+            self.recent_move[new] = new_pos
+        if old is not None:
+            self.recent_move[old] = old.position
+        else:
+            self.recent_move[old] = old_pos
+
+    def is_check(self, player):
+        if player:
+            opp = self.black
+            side = self.white
+        else:
+            opp = self.white
+            side = self.black
+        enemies = []
+        for pieces in opp:
+            enemies = pieces.generate_moves(self)
+            if side[0].get_position() in enemies:
+                return True
+        else:
+            return False
+
+    def checkmate(self, player):
+        if player:
+            opp = self.black
+            side = self.white
+        else:
+            opp = self.white
+            side = self.black
+        king = side[0]
+        orig  = king.position
+        vals = []
+        for moves in king.generate_moves(self):
+            prev = self.piece_by_pos(moves)
+            self.change(king.position, moves)
+            vals += [self.is_check(player)]
+            self.change(moves, orig)
+            if prev is not None:
+                self.add_piece(prev, moves)
+        for allies in side:
+            allies_moves = allies.generate_moves(self)
+            for i in allies_moves:
+                self.change(allies.position, i)
+                vals+= [self.is_check(player)]
+                print(vals)
+                self.undo()
 
 
-    def is_turn(self, pos, turn):
-
-        if (turn % 2 is 0) and self.piece_by(pos[1], pos[0]).color is False:
+        if all(vals) and vals != []:
             return True
-        elif turn % 2 == 1 and self.piece_by(pos[1], pos[0]).color is True:
+        return False
+
+    def undo(self):
+        old_pos = list(self.recent_move.keys())[1]
+        new_pos = list(self.recent_move.keys())[0]
+        new_other = self.recent_move[new_pos]
+        self.change(self.recent_move[new_pos], self.recent_move[old_pos])
+        if new_pos is not None:
+            self.add_piece(new_pos, new_other)
+
+
+    def is_turn(self, player, piece):
+        if player is piece.color:
             return True
         else:
             return False
 
-    def checka(self, board, turn):
-        if turn % 2 == 0:
-            king = self.piece_by(self.white_k[1], self.white_k[0])
-            if king.check(board, None, self.white_k):
-                return True
-        elif turn % 2 == 1:
-            king = self.piece_by(self.black_k[1], self.black_k[0])
-            if king.check(board, None, self.black_k):
-                return True
+    def get_all_moves(self):
+        all_moves = []
+        for i in self.black:
+            all_moves += i.generate_moves(self)
+        return all_moves
 
-        return False
+    def pawn_promotion(self, player):
+        if player:
+            for i in self.white:
+                if isinstance(i, Pawn):
+                    if i.get_position()[1] == 0:
+                        self.add_piece(Queen(True), i.get_position())
+                        self.white.remove(i)
+        else:
+            for i in self.black:
+                if isinstance(i, Pawn):
+                    if i.get_position()[1] == 7:
+                        self.add_piece(Queen(False), i.get_position())
+                        self.black.remove(i)
 
 
 class Piece:
     def __init__(self, color):
-        self.white = color
-
-    def is_white(self):
-        return self.white
-
-
-class King(Piece):
-    def __init__(self, color):
-        Piece.__init__(self, color)
         self.color = color
-        if color is False:
-            w_king = pygame.image.load('white_king.png').convert_alpha()
-            self.w_king = pygame.transform.scale(w_king, (75, 75))
-        else:
-            w_king = pygame.image.load('black_king.png').convert_alpha()
-            self.w_king = pygame.transform.scale(w_king, (75, 75))
+        self.position = []
 
-    def image(self):
-        return self.w_king
+    def change_pos(self, new_pos):
+        self.position = new_pos
 
-    def check(self, board, pos, new):
-        all = []
-        for i in range(8):
-            for j in range(8):
-                piec = board.piece_by(i,j)
-                if piec is not None:
-                    if piec.color != self.color:
-                        all+=piec.is_valid(board,[j,i])
-        if new in all:
-            return True
-        return False
+    def get_position(self):
+        return self.position
 
-
-
-    def is_valid(self, board, pos):
-        n = board.piece_by(pos[1], pos[0])
-        return [0,0]
-
-    def move(self, board, pos, new):
-        distance = math.sqrt((pos[1]-new[1])**2 + (pos[0]- new[0])**2)
-        if distance <= math.sqrt(2) and not self.check(board, pos, new):
-            board.change(pos, new)
-            board.king_pos(self, new)
-
-
-class Queen(Piece):
-    def __init__(self, color):
-        Piece.__init__(self, color)
-        self.color = color
-        if color is False:
-            w_queen = pygame.image.load('white_queen.png').convert_alpha()
-            self.queen = pygame.transform.scale(w_queen, (75, 75))
-        else:
-            b_queen = pygame.image.load('black_queen.png').convert_alpha()
-            self.queen = pygame.transform.scale(b_queen, (75, 75))
-
-    def image(self):
-        return self.queen
-
-    def direct(self, board, pos, i, j):
+    def vert(self,board, pos, i, j):
         possible = []
-        x = pos[0]
-        y = pos[1]
         z = pos[1]
         d = pos[0]
-        for t in range(1, 8):
-            y += i
-            x += j
-            if x > 7 or y > 7 or x<0 or y < 0:
-                break
-            diag = board.piece_by(y, x)
-
-            if diag is not None:
-                if diag.color != self.color:
-                    possible.append([x, y])
-                break
-            else:
-                possible.append([x, y])
-
         for s in range(1,8):
             if i == 1:
                 z += j
@@ -197,7 +173,7 @@ class Queen(Piece):
 
             if z > 7 or z <0 or d > 7 or d <0:
                 break
-            hori = board.piece_by(z,d)
+            hori = board.piece_by_pos([d,z])
             if hori is not None:
                 if hori.color != self.color:
                     possible.append([d, z])
@@ -206,267 +182,297 @@ class Queen(Piece):
                 possible.append([d, z])
         return possible
 
-    def is_valid(self, board, pos):
+    def vertical_movement(self, board, pos):
         possible_moves = []
         for i in [1, -1]:
             for j in [1, -1]:
-                possible_moves+=self.direct(board, pos, i, j)
+                possible_moves+=self.vert(board, pos, i, j)
         return possible_moves
 
-    def move(self, board, pos, new):
-        if new in self.is_valid(board, pos):
-            board.change(pos, new)
-
-
-
-class Rook(Piece):
-    def __init__(self, color):
-        super().__init__(color)
-        self.color = color
-        if self.color is False:
-            w_rook = pygame.image.load('white_rook.png').convert_alpha()
-            self.rook = pygame.transform.scale(w_rook, (75, 75))
-        else:
-            w_rook = pygame.image.load('black_rook.png').convert_alpha()
-            self.rook = pygame.transform.scale(w_rook, (75, 75))
-
-    def image(self):
-        return self.rook
-
-
-    def is_valid(self, board, pos):
-        possible_moves = []
-        maxx = 7 - pos[0]
-        maxy = 7 - pos[1]
-        for i in range(1, maxx+1):
-            if board.piece_by(pos[1], pos[0]+i) is not None:
-                if board.piece_by(pos[1], pos[0]+i).color != self.color:
-                    possible_moves.append([pos[0] + i, pos[1]])
-                break
-            else:
-                possible_moves.append([pos[0] + i, pos[1]])
-        for i in range(1, pos[0]+1):
-            if board.piece_by(pos[1], pos[0]-i) is not None:
-                if board.piece_by(pos[1], pos[0]-i).color != self.color:
-                    possible_moves.append([pos[0] - i, pos[1]])
-                break
-            else:
-                possible_moves.append([pos[0] - i, pos[1]])
-        for i in range(1, maxy+1):
-            if board.piece_by(pos[1] +i, pos[0]) is not None:
-                if board.piece_by(pos[1] +i, pos[0]).color != self.color:
-                    possible_moves.append([pos[0], pos[1] + i])
-                break
-            else:
-                possible_moves.append([pos[0], pos[1] + i])
-        for i in range(1, pos[1]+1):
-            if board.piece_by(pos[1] - i, pos[0]) is not None:
-                if board.piece_by(pos[1] - i, pos[0]).color != self.color:
-                    possible_moves.append([pos[0], pos[1] - i])
-                break
-            else:
-                possible_moves.append([pos[0], pos[1]-i])
-        return possible_moves
-
-    def move(self, board, pos, new):
-        if new in self.is_valid(board, pos):
-            board.change(pos, new)
-
-
-class Bishop(Piece):
-    def __init__(self, color):
-        Piece.__init__(self, color)
-        self.color = color
-        if color is False:
-            w_bishop = pygame.image.load('white_bishop.png').convert_alpha()
-            self.w_bishop = pygame.transform.scale(w_bishop, (75, 75))
-        else:
-            w_bishop = pygame.image.load('black_bishop.png').convert_alpha()
-            self.w_bishop = pygame.transform.scale(w_bishop, (75, 75))
-
-    def image(self):
-        return self.w_bishop
-
-    def direct(self, board, pos, i, j):
+    def diagonal_helper(self, board, pos, i, j):
         possible = []
-        x=pos[0]
-        y=pos[1]
-        for t in range(1, 7):
-            y += i
-            x += j
-            if x >7 or y>7 or x<0 or y<0:
+        x = pos[0]
+        y = pos[1]
+        for t in range(1, 8):
+            y += j
+            x += i
+            if x > 7 or y > 7 or x < 0 or y < 0:
                 break
-            m = board.piece_by(y,x)
-            if m is not None:
-                if m.color != self.color:
+            diag = board.piece_by_pos([x, y])
+
+            if diag is not None:
+                if diag.color != self.color:
                     possible.append([x, y])
                 break
             else:
                 possible.append([x, y])
         return possible
 
-
-    def is_valid(self, board, pos):
+    def diagonal(self, board, pos):
         possible_moves = []
-        for i in [1,-1]:
-            for j in [1,-1]:
-                possible_moves+= self.direct(board, pos, i, j)
+        for i in [1, -1]:
+            for j in [1, -1]:
+                possible_moves+=self.diagonal_helper(board, pos, i, j)
         return possible_moves
 
+    def generate_moves(self, board):
+        return self.is_valid(board, self.position)
 
-    def move(self, board, pos, new):
-        valid = self.is_valid(board,pos)
-        if new in valid:
-            board.change(pos, new)
+    def is_valid(self, board, pos):
+        return []
+
+
+class King(Piece):
+    def __init__(self, color):
+        super().__init__(color)
+        if color is True:
+            w_king = pygame.image.load('white_king.png').convert_alpha()
+            self.w_king = pygame.transform.scale(w_king, (100, 100))
+        else:
+            w_king = pygame.image.load('black_king.png').convert_alpha()
+            self.w_king = pygame.transform.scale(w_king, (100, 100))
+
+    def image(self):
+        return self.w_king
+
+    def is_valid(self, board, pos):
+        lst = [-1,1,0]
+        possible = []
+        for i in lst:
+            for j in lst:
+                if (8>pos[0]+i>-1) and (8>pos[1]+j>-1):
+                    pie = board.piece_by_pos([pos[0] + i, pos[1] + j])
+                    if pie is not None:
+                        if pie.color != self.color:
+                            possible.append([pos[0]+i, pos[1]+j])
+                    else:
+                        possible.append([pos[0]+i, pos[1]+j])
+        return possible
+
+
+class Queen(Piece):
+    def __init__(self, color):
+        super().__init__(color)
+        if color is True:
+            w_queen = pygame.image.load('white_queen.png').convert_alpha()
+            self.queen = pygame.transform.scale(w_queen, (100, 100))
+        else:
+            b_queen = pygame.image.load('black_queen.png').convert_alpha()
+            self.queen = pygame.transform.scale(b_queen, (100, 100))
+
+    def image(self):
+        return self.queen
+
+    def is_valid(self, board, pos):
+        moves = self.vertical_movement(board, pos)
+        moves += self.diagonal(board, pos)
+        return moves
+
+
+class Rook(Piece):
+    def __init__(self, color):
+        super().__init__(color)
+
+        if self.color is True:
+            w_rook = pygame.image.load('white_rook.png').convert_alpha()
+            self.rook = pygame.transform.scale(w_rook, (100, 100))
+        else:
+            w_rook = pygame.image.load('black_rook.png').convert_alpha()
+            self.rook = pygame.transform.scale(w_rook, (100, 100))
+
+    def image(self):
+        return self.rook
+
+    def is_valid(self, board, pos):
+        return self.vertical_movement(board, pos)
+
+
+class Bishop(Piece):
+    def __init__(self, color):
+        Piece.__init__(self, color)
+        if color is True:
+            w_bishop = pygame.image.load('white_bishop.png').convert_alpha()
+            self.w_bishop = pygame.transform.scale(w_bishop, (100, 100))
+        else:
+            w_bishop = pygame.image.load('black_bishop.png').convert_alpha()
+            self.w_bishop = pygame.transform.scale(w_bishop, (100, 100))
+
+    def image(self):
+        return self.w_bishop
+
+    def is_valid(self, board, pos):
+        return self.diagonal(board, pos)
 
 
 class Knight(Piece):
     def __init__(self, color):
         Piece.__init__(self, color)
-        self.color = color
-        if color is False:
+        if color is True:
             w_knight = pygame.image.load('white_knight.png').convert_alpha()
-            self.w_knight = pygame.transform.scale(w_knight, (75, 75))
+            self.w_knight = pygame.transform.scale(w_knight, (100, 100))
         else:
             w_knight = pygame.image.load('black_knight.png').convert_alpha()
-            self.w_knight = pygame.transform.scale(w_knight, (75, 75))
+            self.w_knight = pygame.transform.scale(w_knight, (100, 100))
 
     def image(self):
         return self.w_knight
-
 
     def is_valid(self, board, pos):
         possible_moves = []
         X = [2, 1, -1, -2, -2, -1, 1, 2]
         Y = [1, 2, 2, 1, -1, -2, -2, -1]
         for i in range(8):
-            x = pos[0] +X[i]
-            y = pos[1] +Y[i]
-            if (7 >=x>=0) and (0<=y<=7):
-                if board.piece_by(y, x) is not None:
-                    if self.color != board.piece_by(y,x).color:
+            x = pos[0] + X[i]
+            y = pos[1] + Y[i]
+            if (7 >= x >= 0) and (0 <= y <= 7):
+                if board.piece_by_pos([x, y]) is not None:
+                    if self.color != board.piece_by_pos([x, y]).color:
                         possible_moves.append([x, y])
                 else:
-                    possible_moves.append([x,y])
+                    possible_moves.append([x, y])
         return possible_moves
-
-    def move(self, board, pos, new):
-        valid = self.is_valid(board, pos)
-        if new in valid:
-            board.change(pos, new)
 
 
 class Pawn(Piece):
     def __init__(self, color):
         Piece.__init__(self, color)
-        self.color = color
         self.num = 0
-        if color is False:
+        if color is True:
             w_pawn = pygame.image.load('white_pawn.png').convert_alpha()
-            self.w_pawn = pygame.transform.scale(w_pawn, (75, 75))
+            self.w_pawn = pygame.transform.scale(w_pawn, (100, 100))
         else:
             w_pawn = pygame.image.load('black_pawn.png').convert_alpha()
-            self.w_pawn = pygame.transform.scale(w_pawn, (75, 75))
+            self.w_pawn = pygame.transform.scale(w_pawn, (100, 100))
 
     def image(self):
         return self.w_pawn
 
     def is_valid(self, board, pos):
-        n = board.piece_by(pos[1], pos[0])
         possible = []
         vert = 1
-        if self.color == True:
+        if self.color:
             vert = -1
-
-        for i in [1,-1]:
-            if 0 <=(pos[1]-vert) <= 7 and 0 <= (pos[0]-i) <= 7:
-                if board.piece_by(pos[1]-vert, pos[0]-i) is not None:
-                    if board.piece_by(pos[1]-vert, pos[0]-i).color != self.color:
-                        possible.append([pos[0]-i, pos[1]-vert])
-
+        if 0<pos[0]<7:
+            left = board.piece_by_pos([pos[0]-1, pos[1]+vert])
+            right = board.piece_by_pos([pos[0]+1, pos[1]+vert])
+            if left is not None:
+                if left.color != self.color:
+                    possible.append([pos[0]-1, pos[1]+vert])
+            if right is not None:
+                if right.color != self.color:
+                    possible.append([pos[0]+1, pos[1]+vert])
+        if board.piece_by_pos([pos[0],pos[1]+vert]) is None:
+            possible.append([pos[0], pos[1]+vert])
+            if self.num == 0:
+                possible.append([pos[0], pos[1] + 2*vert])
+        self.num+=1
 
         return possible
 
-    def move(self,board, pos, new):
-        valid = self.is_valid(board, pos)
-        vert = 1
-        if self.color == True:
-            vert = -1
-        if board.piece_by(pos[1]-vert, pos[0]) is None:
-            valid.append([pos[0], pos[1] - vert])
-            if self.num == 0:
-                valid.append([pos[0], pos[1]-2*vert])
-                self.num +=1
 
-        if new in valid:
-            board.change(pos, new)
 
-class Player:
-    def __init__(self, color):
-        self.color = color
-        if color is False:
-            self.turn = 0
-        else:
+
+class Players:
+    def __init__(self, type):
+        self.type = type
+        if type:
             self.turn = 1
+        else:
+            self.turn = 2
 
-    def moved(self):
-        self.turn
+    def is_turn(self, board, selected):
+        if selected is self.type:
+            return True
+        else:
+            return False
 
 
-class Main:
+
+
+class main:
     def __init__(self):
         self.Board = Board()
-        self.Board.create_board()
-        self.board = self.Board.return_board()
+        self.position = []
+        self.valid = []
+        self.player = True
+        self.Board.create(True)
+        self.Board.create(False)
+        self.checkmate = False
         self.loop()
 
-    def draw(self):
-        for i in range(8):
-            for j in range(8):
-                if self.board[i][j].color == 'white':
-                    pygame.draw.rect(screen, (255, 255, 255), (j * 75, i * 75, 75, 75))
-                    if self.board[i][j].piece is not None:
-                        screen.blit(self.Board.piece_by(i, j).image(), (j * 75, i * 75))
-                else:
-                    pygame.draw.rect(screen, (52, 152, 0), (j * 75, i*75, 75, 75))
-                    if self.Board.piece_by(i,j) is not None:
-                        screen.blit(self.Board.piece_by(i,j).image(), (j *75, i*75))
+    def row_column(self, pos):
+        column = math.floor(pos[0]/100)
+        row = math.floor(pos[1]/100)
+        return [column, row]
 
+    def text_objects(self, text, font):
+        textSurface = font.render(text, True, (0,0,0))
+        return textSurface, textSurface.get_rect()
+
+    def draw(self):
+        util =0
+        highlight_moves = None
+        for i in range(8):
+            util +=1
+            for j in range(8):
+                pi = self.Board.piece_by_pos([i,j])
+                if util % 2:
+                    pygame.draw.rect(screen, (255, 255, 255), (i * 100, j * 100, 100, 100))
+                else:
+                    pygame.draw.rect(screen, (52, 152, 0), (i * 100, j*100, 100, 100))
+                if pi is not None:
+                    if [i, j] == self.position and pi.color is self.player:
+                        highlight_moves = pi
+                        pygame.draw.rect(screen, (52, 250, 0), (self.position[0] * 100, self.position[1] * 100, 100, 100))
+                    screen.blit(pi.image(), (i * 100, j * 100))
+                if self.checkmate:
+                    text = "Checkmate"
+                    largeText = pygame.font.Font('freesansbold.ttf', 115)
+                    TextSurf, TextRect = self.text_objects(text, largeText)
+                    TextRect.center = ((800 / 2), (800 / 2))
+                    screen.blit(TextSurf, TextRect)
+                util += 1
+        if highlight_moves is not None:
+            for t in highlight_moves.generate_moves(self.Board):
+                pygame.draw.rect(screen, (52, 250, 0), (t[0] * 100 + 45, t[1] * 100 + 45, 10, 10))
+
+    def check_for_check(self, pos):
+        if self.Board.is_check(not self.player):
+            self.Board.undo()
+            if self.Board.checkmate(not self.player):
+                self.checkmate = True
+            self.player = not self.player
 
     def loop(self):
-        pygame.init()
-
-
-        WHITE=(255,255,255)
-        pos = []
-        turn =0
-        Player1 = Player(False)
-        Player2 = Player(True)
-        screen.fill(WHITE)
         running = True
+        prev = None
+        pos = []
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    po = pygame.mouse.get_pos()
-                    po = self.Board.row_column(po)
-                    pos += [po]
+                    self.position = self.row_column(pygame.mouse.get_pos())
+                    pos += [self.position]
                     if len(pos) == 2:
-                        selected = self.Board.piece_by(pos[0][1], pos[0][0])
-                        if selected is not None and self.Board.is_turn(pos[0], turn):
-                            selected.move(self.Board, pos[0], pos[1])
+                        piece = self.Board.piece_by_pos(pos[0])
+                        if piece is not None:
+                            valid = piece.is_valid(self.Board, pos[0])
+                            if pos[1] in valid and self.Board.is_turn(self.player, piece):
+                                self.Board.change(pos[0],pos[1])
+                            else:
+                                pos = []
+                                break
+                            self.Board.pawn_promotion(self.player)
+                            self.player = not self.player
 
-                            print(pos)
-                            if self.Board.checka(self.Board, turn):
-                                self.Board.change(pos[1], pos[0])
-                                turn -= 1
-                            turn += 1
 
                             pos = []
                         else:
                             pos = []
+            self.check_for_check(self.player)
+
             self.draw()
             pygame.display.update()
 
-Main()
+main()

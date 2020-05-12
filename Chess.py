@@ -109,7 +109,6 @@ class Board:
                 print(vals)
                 self.undo()
 
-
         if all(vals) and vals != []:
             return True
         return False
@@ -440,6 +439,7 @@ class main:
         if self.Board.is_check(not self.player):
             self.Board.undo()
             if self.Board.checkmate(not self.player):
+                print('aight')
                 self.checkmate = True
             self.player = not self.player
 
@@ -476,3 +476,4 @@ class main:
             pygame.display.update()
 
 main()
+

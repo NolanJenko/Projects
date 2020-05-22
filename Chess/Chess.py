@@ -1,8 +1,7 @@
 import pygame
 import math
 import numpy as np
-import random
-
+import MinMax
 
 pygame.init()
 screen = pygame.display.set_mode((800, 800))
@@ -10,10 +9,10 @@ screen = pygame.display.set_mode((800, 800))
 
 class Board:
     def __init__(self):
-        self.board = np.full((8,8), None)
+        self.board = np.full((8, 8), None)
         self.white = []
         self.black = []
-        self.recent_move = {}
+        self.recent_move = []
 
     def add_piece(self, piece, pos):
         self.board[pos[1]][pos[0]] = piece
@@ -33,7 +32,7 @@ class Board:
         self.add_piece(King(color), [4, side])
         for i in range(8):
             if not color:
-                self.add_piece(Pawn(color), [i, side+1])
+                self.add_piece(Pawn(color), [i, side + 1])
             else:
                 self.add_piece(Pawn(color), [i, side - 1])
             if i == 0 or i == 7:
@@ -46,7 +45,6 @@ class Board:
         self.add_piece(Queen(color), [3, side])
 
     def change(self, old, new):
-        self.recent_move = {}
         new_pos = self.board[new[1]][new[0]]
         old_pos = self.board[old[1]][old[0]]
         if new_pos is not None:
@@ -54,20 +52,20 @@ class Board:
                 self.white.remove(new_pos)
             else:
                 self.black.remove(new_pos)
-        self.previous_move(new_pos, new, old_pos, old)
+        self.previous_moves(new_pos, new, old_pos, old)
         self.board[new[1]][new[0]] = self.board[old[1]][old[0]]
         self.board[new[1]][new[0]].change_pos(new)
         self.board[old[1]][old[0]] = None
 
-    def previous_move(self, new, new_pos, old, old_pos):
-        if new is not None:
-            self.recent_move[new] = new.position
-        else:
-            self.recent_move[new] = new_pos
-        if old is not None:
-            self.recent_move[old] = old.position
-        else:
-            self.recent_move[old] = old_pos
+    def previous_moves(self, new, new_pos, old, old_pos):
+        self.recent_move.insert(0, [new, new_pos, old, old_pos])
+
+    def undo(self):
+        self.change(self.recent_move[0][1], self.recent_move[0][3])
+        self.recent_move.pop(0)
+        if self.recent_move[0][0] is not None:
+            self.add_piece(self.recent_move[0][0], self.recent_move[0][1])
+        self.recent_move.pop(0)
 
     def is_check(self, player):
         if player:
@@ -76,7 +74,6 @@ class Board:
         else:
             opp = self.white
             side = self.black
-        enemies = []
         for pieces in opp:
             enemies = pieces.generate_moves(self)
             if side[0].get_position() in enemies:
@@ -86,13 +83,11 @@ class Board:
 
     def checkmate(self, player):
         if player:
-            opp = self.black
             side = self.white
         else:
-            opp = self.white
             side = self.black
         king = side[0]
-        orig  = king.position
+        orig = king.position
         vals = []
         for moves in king.generate_moves(self):
             prev = self.piece_by_pos(moves)
@@ -105,33 +100,17 @@ class Board:
             allies_moves = allies.generate_moves(self)
             for i in allies_moves:
                 self.change(allies.position, i)
-                vals+= [self.is_check(player)]
-                print(vals)
+                vals += [self.is_check(player)]
                 self.undo()
 
         if all(vals) and vals != []:
             return True
         return False
 
-    def undo(self):
-        old_pos = list(self.recent_move.keys())[1]
-        new_pos = list(self.recent_move.keys())[0]
-        new_other = self.recent_move[new_pos]
-        self.change(self.recent_move[new_pos], self.recent_move[old_pos])
-        if new_pos is not None:
-            self.add_piece(new_pos, new_other)
-
-
-    def is_turn(self, player, piece):
-        if player is piece.color:
-            return True
-        else:
-            return False
-
     def get_all_moves(self):
-        all_moves = []
+        all_moves = {}
         for i in self.black:
-            all_moves += i.generate_moves(self)
+            all_moves[i] = i.generate_moves(self)
         return all_moves
 
     def pawn_promotion(self, player):
@@ -148,6 +127,25 @@ class Board:
                         self.add_piece(Queen(False), i.get_position())
                         self.black.remove(i)
 
+    def castling_valid(self, player):
+        king = None
+        if player:
+            king = self.white[0]
+        else:
+            king = self.black[0]
+
+        if king.position == [4,7] or king.position == [4,0]:
+            left = [True if self.piece_by_pos([king.position[0]-i-1, king.position[1]]) is None
+                    else False for i in range(3)]
+            right = [True if self.piece_by_pos([king.position[0]+j+1, king.position[1]]) is None
+                     else False for j in range(2)]
+            if all(right):
+                return 1
+            elif all(left):
+                return 2
+            else:
+                return 0
+
 
 class Piece:
     def __init__(self, color):
@@ -160,19 +158,19 @@ class Piece:
     def get_position(self):
         return self.position
 
-    def vert(self,board, pos, i, j):
+    def vert(self, board, pos, i, j):
         possible = []
         z = pos[1]
         d = pos[0]
-        for s in range(1,8):
+        for s in range(1, 8):
             if i == 1:
                 z += j
             if i == -1:
                 d += j
 
-            if z > 7 or z <0 or d > 7 or d <0:
+            if z > 7 or z < 0 or d > 7 or d < 0:
                 break
-            hori = board.piece_by_pos([d,z])
+            hori = board.piece_by_pos([d, z])
             if hori is not None:
                 if hori.color != self.color:
                     possible.append([d, z])
@@ -185,7 +183,7 @@ class Piece:
         possible_moves = []
         for i in [1, -1]:
             for j in [1, -1]:
-                possible_moves+=self.vert(board, pos, i, j)
+                possible_moves += self.vert(board, pos, i, j)
         return possible_moves
 
     def diagonal_helper(self, board, pos, i, j):
@@ -211,7 +209,7 @@ class Piece:
         possible_moves = []
         for i in [1, -1]:
             for j in [1, -1]:
-                possible_moves+=self.diagonal_helper(board, pos, i, j)
+                possible_moves += self.diagonal_helper(board, pos, i, j)
         return possible_moves
 
     def generate_moves(self, board):
@@ -234,18 +232,24 @@ class King(Piece):
     def image(self):
         return self.w_king
 
+    def castling(self, board):
+        if self.position == [4,7]:
+            if board.piece_by_pos([5,7]) is None and board.piece_by_pos([6,7]) is None:
+                return True
+
+
     def is_valid(self, board, pos):
-        lst = [-1,1,0]
+        lst = [-1, 1, 0]
         possible = []
         for i in lst:
             for j in lst:
-                if (8>pos[0]+i>-1) and (8>pos[1]+j>-1):
+                if (8 > pos[0] + i > -1) and (8 > pos[1] + j > -1):
                     pie = board.piece_by_pos([pos[0] + i, pos[1] + j])
                     if pie is not None:
                         if pie.color != self.color:
-                            possible.append([pos[0]+i, pos[1]+j])
+                            possible.append([pos[0] + i, pos[1] + j])
                     else:
-                        possible.append([pos[0]+i, pos[1]+j])
+                        possible.append([pos[0] + i, pos[1] + j])
         return possible
 
 
@@ -349,43 +353,25 @@ class Pawn(Piece):
     def is_valid(self, board, pos):
         possible = []
         vert = 1
+        side = 1
         if self.color:
             vert = -1
-        if 0<pos[0]<7:
-            left = board.piece_by_pos([pos[0]-1, pos[1]+vert])
-            right = board.piece_by_pos([pos[0]+1, pos[1]+vert])
-            if left is not None:
-                if left.color != self.color:
-                    possible.append([pos[0]-1, pos[1]+vert])
+            side = 6
+        if 0 <= pos[0]<7:
+            right = board.piece_by_pos([pos[0] + 1, pos[1] + vert])
             if right is not None:
                 if right.color != self.color:
-                    possible.append([pos[0]+1, pos[1]+vert])
-        if board.piece_by_pos([pos[0],pos[1]+vert]) is None:
-            possible.append([pos[0], pos[1]+vert])
-            if self.num == 0:
-                possible.append([pos[0], pos[1] + 2*vert])
-        self.num+=1
-
+                    possible.append([pos[0] + 1, pos[1] + vert])
+        if 7 >= pos[0] >0:
+            left = board.piece_by_pos([pos[0] - 1, pos[1] + vert])
+            if left is not None:
+                if left.color != self.color:
+                    possible.append([pos[0] - 1, pos[1] + vert])
+        if board.piece_by_pos([pos[0], pos[1] + vert]) is None:
+            possible.append([pos[0], pos[1] + vert])
+            if self.position[1] == side and board.piece_by_pos([pos[0], pos[1]+2*vert]) is None:
+                possible.append([pos[0], pos[1]+2*vert])
         return possible
-
-
-
-
-class Players:
-    def __init__(self, type):
-        self.type = type
-        if type:
-            self.turn = 1
-        else:
-            self.turn = 2
-
-    def is_turn(self, board, selected):
-        if selected is self.type:
-            return True
-        else:
-            return False
-
-
 
 
 class main:
@@ -393,6 +379,7 @@ class main:
         self.Board = Board()
         self.position = []
         self.valid = []
+        self.selected = None
         self.player = True
         self.Board.create(True)
         self.Board.create(False)
@@ -400,29 +387,30 @@ class main:
         self.loop()
 
     def row_column(self, pos):
-        column = math.floor(pos[0]/100)
-        row = math.floor(pos[1]/100)
+        column = math.floor(pos[0] / 100)
+        row = math.floor(pos[1] / 100)
         return [column, row]
 
     def text_objects(self, text, font):
-        textSurface = font.render(text, True, (0,0,0))
+        textSurface = font.render(text, True, (0, 0, 0))
         return textSurface, textSurface.get_rect()
 
     def draw(self):
-        util =0
+        util = 0
         highlight_moves = None
         for i in range(8):
-            util +=1
+            util += 1
             for j in range(8):
-                pi = self.Board.piece_by_pos([i,j])
+                pi = self.Board.piece_by_pos([i, j])
                 if util % 2:
                     pygame.draw.rect(screen, (255, 255, 255), (i * 100, j * 100, 100, 100))
                 else:
-                    pygame.draw.rect(screen, (52, 152, 0), (i * 100, j*100, 100, 100))
+                    pygame.draw.rect(screen, (52, 152, 0), (i * 100, j * 100, 100, 100))
                 if pi is not None:
                     if [i, j] == self.position and pi.color is self.player:
                         highlight_moves = pi
-                        pygame.draw.rect(screen, (52, 250, 0), (self.position[0] * 100, self.position[1] * 100, 100, 100))
+                        pygame.draw.rect(screen, (52, 250, 0),
+                                         (self.position[0] * 100, self.position[1] * 100, 100, 100))
                     screen.blit(pi.image(), (i * 100, j * 100))
                 if self.checkmate:
                     text = "Checkmate"
@@ -435,45 +423,65 @@ class main:
             for t in highlight_moves.generate_moves(self.Board):
                 pygame.draw.rect(screen, (52, 250, 0), (t[0] * 100 + 45, t[1] * 100 + 45, 10, 10))
 
-    def check_for_check(self, pos):
-        if self.Board.is_check(not self.player):
-            self.Board.undo()
-            if self.Board.checkmate(not self.player):
-                print('aight')
-                self.checkmate = True
-            self.player = not self.player
+    def check_for_check(self, bef):
+        if self.Board.is_check(self.player):
+            if bef == 1:
+                self.Board.undo()
+                self.check_for_checkmate()
+                self.player = not self.player
+            else:
+                self.check_for_checkmate()
+
+    def check_for_checkmate(self):
+        if self.Board.checkmate(self.player):
+            self.checkmate = True
+
+    def castling(self):
+        side = 0
+        if self.player:
+            side = 7
+        if self.Board.castling_valid(self.player) == 1 and self.position == [6, side]:
+            self.Board.change([4,side], self.position)
+            self.Board.change([7,side], [5,side])
+            return True
+        elif self.Board.castling_valid(self.player) == 2 and self.position == [2, side]:
+            self.Board.change([4,side], self.position)
+            self.Board.change([0,side], [3,side])
+            return True
+        return False
+
+
+    def move_piece(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            self.position = self.row_column(pygame.mouse.get_pos())
+            if self.selected is None:
+                self.selected = self.Board.piece_by_pos(self.position)
+            else:
+                valid = self.selected.is_valid(self.Board, self.selected.position)
+                if self.castling():
+                    ok = 1
+                elif self.position in valid and self.selected.color == self.player:
+                    self.Board.change(self.selected.position, self.position)
+                else:
+                    self.selected = None
+                    return 0
+                self.Board.pawn_promotion(self.player)
+                self.check_for_check(1)
+                self.player = not self.player
+                self.check_for_check(0)
+                self.selected = None
 
     def loop(self):
         running = True
-        prev = None
-        pos = []
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    self.position = self.row_column(pygame.mouse.get_pos())
-                    pos += [self.position]
-                    if len(pos) == 2:
-                        piece = self.Board.piece_by_pos(pos[0])
-                        if piece is not None:
-                            valid = piece.is_valid(self.Board, pos[0])
-                            if pos[1] in valid and self.Board.is_turn(self.player, piece):
-                                self.Board.change(pos[0],pos[1])
-                            else:
-                                pos = []
-                                break
-                            self.Board.pawn_promotion(self.player)
-                            self.player = not self.player
-
-
-                            pos = []
-                        else:
-                            pos = []
-            self.check_for_check(self.player)
-
+                self.move_piece(event)
+                if event.type == pygame.KEYDOWN:
+                    self.Board.undo()
             self.draw()
             pygame.display.update()
 
-main()
 
+main()

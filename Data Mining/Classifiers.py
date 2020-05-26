@@ -26,26 +26,6 @@ class KNN:
                 best_label = i
         return best_label
 
-    def average_instance(self, neighbors, column):
-        aver = 0
-        for i in neighbors[column]:
-            print(i)
-            aver += i
-        return aver/len(neighbors)
-
-
-    def predict_regression(self, train, test, y):
-        neighbors = self.find_neighbors(train, test)
-        prediction = self.average_instance(neighbors, y)
-        return prediction
-
-    def knn_regression(self, train, test, y):
-        predictions = []
-        for row in test:
-            output = self.predict_regression(train, row, y)
-            predictions.append(output)
-        return predictions
-
     # predicts what class a new data instance should be applied to
     # by finding the k nearest neighbors then returning the class with the highest number of instances
     def predict_classification(self, train, test, y):
